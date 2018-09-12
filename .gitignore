@@ -1,0 +1,10 @@
+*.pyc
+.DS_Store
+.idea
+*.iml
+*.log
+*.sqlite3
+launch.json
+.vscode
+**/*_initial.py
+media
