@@ -3,18 +3,14 @@ from sqlalchemy.orm import sessionmaker
 from connectors import Connector
 
 import settings
-from models import CustomerInfoToRole, Role
+
 
 logger = logging.getLogger('workflow')
 
 
 class WorkflowTrigger:
-    def __init__(self, apply_code):
-        connector = Connector(settings.CONNECTION['sso']['theme'], settings.CONNECTION['sso']['host'], settings.CONNECTION['sso']['port'],
-                              settings.CONNECTION['sso']['user'], settings.CONNECTION['sso']['password'], settings.CONNECTION['sso']['database'])
-        Session = sessionmaker(bind=connector.get_engine())
-        self.session = Session()
-        self.branch_user_id = self.session.query(CustomerInfoToRole).join(Role, CustomerInfoToRole.role_id == Role.id).filter(Role.role_name == '渠道管理').first().customer_info_id
+    def __init__(self, apply_code, user_id):
+        self.branch_user_id = user_id
         self.apply_code = apply_code
         self.workflow_url = '{}://{}:{}/{}/'.format(settings.WORKFLOW_URL['theme'], settings.WORKFLOW_URL['host'], settings.WORKFLOW_URL['port'], settings.WORKFLOW_URL['root'])
 

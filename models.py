@@ -207,3 +207,33 @@ class Role(Base):
 
     def __str__(self):
         return self.role_name
+
+
+class CustomerInfoToOrgan(Base):
+    __tablename__ = 'customer_info_to_organ'
+
+    id = Column(Integer, primary_key=True)
+    organ_id = Column(Integer)
+    customer_info_id = Column(Integer)
+
+
+class Organ(Base):
+    __tablename__ = 'organ'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100))
+    grade = Column(Integer)
+
+    def __str__(self):
+        return self.name
+
+
+class CheckFileResult(Base):
+    __tablename__ = 'customer_check_file_result'
+
+    id = Column(Integer, primary_key=True)
+    delete_flag = Column(Integer)
+    customer_apply_id = Column(String(20))
+    operator_id = Column(Integer)
+    organ_user_id = Column(Integer)
+    result = Column(Integer)

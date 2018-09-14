@@ -14,27 +14,25 @@ class DataPreparation:
     def create_serial_number(sn_type, session):
         prefix = sn_type + datetime.now().strftime('%Y%m%d')
         re_qs = session.query(SerialNumber).filter(SerialNumber.prefix == prefix).order_by(desc(SerialNumber.id))
-        suffix = 1
-        if re_qs.count() > 0:
-            suffix = int(re_qs.first().suffix) + 1
-        logger.info('Serial number: {}SN{:>06}'.format(prefix, suffix))
-        return prefix, suffix, '{}SN{:>06}'.format(prefix, suffix)
+        suffix = int(re_qs.first().suffix) + 1 if re_qs.count() > 0 else 1
+        logger.info('Serial number: {}{:>08}'.format(prefix, suffix))
+        return prefix, suffix, '{}{:>08}'.format(prefix, suffix)
 
     @staticmethod
-    def customer_register(register_code, customer, product_code):
+    def customer_register(register_code, customer, product_code, user_id, organ_id, net_id):
         registration = CustomerRegister(insert_time=datetime.now(), update_time=datetime.now(),
-                                    operator_id=0, delete_flag=0, organ_id=0, net_id=0, organ_user_id=0,
+                                    operator_id=0, delete_flag=0, organ_id=organ_id, net_id=net_id, organ_user_id=user_id,
                                     register_phone=customer.phone_number, register_code=register_code, product_code=product_code, register_time=datetime.now(),
                                     province=customer.province, city=customer.city, saleman_name=Generator.generate_name(), customer_source=Generator.generate_address())
         logger.info(registration)
         return registration
 
     @staticmethod
-    def customer_apply(apply_code, register_code, customer, product_code):
+    def customer_apply(apply_code, register_code, customer, product_code, user_id, organ_id, net_id):
         product_name = '房供贷' if product_code == '1006' else '保单贷'
         apply = CustomerApply(insert_time=datetime.now(), update_time=datetime.now(), operator_id=0, delete_flag=0,
                               apply_id=apply_code, apply_time=datetime.now(), customer_register_code=register_code, register_time=datetime.now(),
-                              organ_id=0, net_id=0, organ_user_id=0, register_phone=customer.phone_number, product_code=product_code, product_name=product_name,
+                              organ_id=organ_id, net_id=net_id, organ_user_id=user_id, register_phone=customer.phone_number, product_code=product_code, product_name=product_name,
                               province=customer.province, city=customer.city, act_pid=str(uuid.uuid4()))
         logger.info(apply)
         return apply
@@ -44,7 +42,7 @@ class DataPreparation:
         idcard = IdCard(insert_time=datetime.now(), update_time=datetime.now(), operator_id=0, delete_flag=0,
                       customer_apply_id=apply_code, name=customer.name, gender=customer.gender,
                       id_number=customer.id_number, birthday='{}年{:02}月{:02}日'.format(customer.year, customer.month, customer.day),
-                      address=customer.address, valid_time='{}{:02}{:02}'.format(str(int(customer.year) + 20), customer.month, customer.day),
+                      address=customer.address, valid_time='{}{:02}{:02}'.format(str(2050), customer.month, customer.day),
                       head_pic='20180605/31cd6135-1b58-447c-b353-40dca8df9fe7.jpg', authentication_organ='{}{}公安局{}分局'.format(customer.province, customer.city, customer.district))
         logger.info(idcard)
         return idcard
