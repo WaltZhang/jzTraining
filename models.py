@@ -1,5 +1,6 @@
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, Numeric, TIMESTAMP
+from sqlalchemy.dialects.mysql import LONGTEXT
 
 
 Base = declarative_base()
@@ -188,6 +189,17 @@ class PolicyPhoto(Base):
         return self.customer_apply_id + ':' + str(self.customer_policy_id) + ', ' + self.path + ', ' + str(self.order_num)
 
 
+class CustomerInfo(Base):
+    __tablename__ = 'customer_info'
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String(100))
+    telphone = Column(String(100))
+
+    def __str__(self):
+        return self.username + ', ' + self.telphone
+
+
 class CustomerInfoToRole(Base):
     __tablename__ = 'customer_info_to_role'
 
@@ -237,3 +249,88 @@ class CheckFileResult(Base):
     operator_id = Column(Integer)
     organ_user_id = Column(Integer)
     result = Column(Integer)
+
+    def __str__(self):
+        return self.customer_apply_id + ', ' + str(self.operator_id) + ':' + str(self.organ_user_id) + ', ' + str(self.result)
+
+
+class PBOC(Base):
+    __tablename__ = 'api_pboc'
+
+    id = Column(Integer, primary_key=True)
+    request_data = Column(LONGTEXT)
+    response_data = Column(LONGTEXT)
+    idNo = Column(String(50))
+    name = Column(String(50))
+    url = Column(String(200))
+    supply = Column(String(200))
+
+    def __str__(self):
+        return self.name
+
+class ApplyConfirmResult(Base):
+    __tablename__ = 'customer_applyconfirm_result'
+
+    id = Column(Integer, primary_key=True)
+    delete_flag = Column(Integer)
+    customer_apply_id = Column(String(20))
+    customer_result = Column(Integer)
+
+    def __str__(self):
+        return self.customer_apply_id + ': ' + str(self.customer_result)
+
+
+class ApplicationInfo(Base):
+    __tablename__ = 'customer_application_info'
+
+    id = Column(Integer, primary_key=True)
+    delete_flag = Column(Integer)
+    customer_apply_id = Column(String(20))
+
+    def __str__(self):
+        return self.customer_apply_id
+
+
+class InterMediaFile(Base):
+    __tablename__ = 'customer_intermediary_agreement_file'
+
+    id = Column(Integer, primary_key=True)
+    delete_flag = Column(Integer)
+    operator_id = Column(Integer)
+    customer_apply_id = Column(String(20))
+    type = Column(Integer)
+    path = Column(String(1000))
+    is_skip = Column(Integer)
+
+    def __str__(self):
+        return self.customer_apply_id + ': ' + str(self.path) + '(' + str(self.type) + ')'
+
+
+class InterMediaFileResullt(Base):
+    __tablename__ = 'customer_intermediary_agreement_result'
+
+    id = Column(Integer, primary_key=True)
+    delete_flag = Column(Integer)
+    operator_id = Column(Integer)
+    customer_apply_id = Column(String(20))
+    organ_user_id = Column(Integer)
+    result = Column(Integer)
+
+    def __str__(self):
+        return self.customer_apply_id + ', operator id: ' + str(self.operator_id) + ', organ user id: ' + str(self.organ_user_id)
+
+
+class PhoneCheckResullt(Base):
+    __tablename__ = 'customer_phcheck_result'
+
+    id = Column(Integer, primary_key=True)
+    delete_flag = Column(Integer)
+    customer_apply_id = Column(String(20))
+    operator_id = Column(Integer)
+    organ_user_id = Column(Integer)
+    result = Column(Integer)
+    self_result = Column(String(20))
+    contact_result = Column(String(20))
+
+    def __str__(self):
+        return self.customer_apply_id + ', result: ' + str(self.result) + ', self result: ' + str(self.self_result) + ', contact result: ' + str(self.contact_result)

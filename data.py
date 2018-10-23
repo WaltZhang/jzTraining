@@ -3,8 +3,9 @@ import logging.config
 from datetime import datetime
 from sqlalchemy import desc
 
-from models import SerialNumber, CustomerRegister, CustomerApply, IdCard, CheckFile, BasicInfo, Policy, PolicyPhoto
+from models import *
 from generators import Generator
+import settings
 
 logger = logging.getLogger('data')
 
@@ -86,3 +87,62 @@ class DataPreparation:
         logger.info(policy_photo)
         return policy_photo
 
+    @staticmethod
+    def api_pboc(apply_code, session):
+        logger.info('查询申请：' + apply_code)
+        product = session.query(CustomerApply).filter(CustomerApply.apply_id == apply_code).one()
+        logger.info('查询身份证信息')
+        id_card = session.query(IdCard).filter(IdCard.customer_apply_id == apply_code).one()
+        logger.info('创建' + ('房供贷' if product.product_code == '1006' else '保单贷，') + 'ID：' + id_card.id_number + '，姓名：' + id_card.name)
+        pboc1 = PBOC(idNo=id_card.id_number, name=id_card.name, url=settings.HOUSE_LOAN_URL_SIMPLE, supply=settings.LOAN_SUPPLY_SIMPLE, request_data='', response_data=settings.HOUSE_LOAN_RESPONSE_SIMPLE)
+        pboc2 = PBOC(idNo=id_card.id_number, name=id_card.name, url=settings.HOUSE_LOAN_URL_JINDIAN, supply=settings.LOAN_SUPPLY_JINDIAN, request_data='', response_data=settings.HOUSE_LOAN_RESPONSE_JINDIAN)
+        if product.product_code == '1007':
+            pboc1 = PBOC(idNo=id_card.id_number, name=id_card.name, url=settings.POLICY_LOAN_URL_SIMPLE, supply=settings.LOAN_SUPPLY_SIMPLE, request_data='', response_data=settings.POLICY_LOAN_RESPONSE_SIMPLE)
+            pboc2 = PBOC(idNo=id_card.id_number, name=id_card.name, url=settings.POLICY_LOAN_URL_JINDIAN, supply=settings.LOAN_SUPPLY_JINDIAN, request_data='', response_data=settings.POLICY_LOAN_RESPONSE_JINDIAN)
+        return pboc1, pboc2
+
+    @staticmethod
+    def customer_check_file_result(apply_code):
+        check_file = CheckFileResult(delete_flag=0, customer_apply_id=apply_code, operator_id=0, organ_user_id=0, result=1)
+        logger.info(check_file)
+        return check_file
+
+    @staticmethod
+    def customer_applyconfirm_result(apply_code):
+        apply_confirm_result = ApplyConfirmResult(delete_flag=0, customer_apply_id=apply_code, customer_result=1)
+        logger.info(apply_confirm_result)
+        return apply_confirm_result
+
+    @staticmethod
+    def customer_application_info(apply_code):
+        application_info = ApplicationInfo(delete_flag=0, customer_apply_id=apply_code)
+        logger.info(application_info)
+        return application_info
+
+    @staticmethod
+    def customer_intermediary_agreement_file(apply_code, operator_id=0):
+        media_file2 = InterMediaFile(operator_id=operator_id, delete_flag=0, customer_apply_id=apply_code, type=2, path=settings.INTERMEDIA_AGREEMENT_2, is_skip=0)
+        logger.info(media_file2)
+        media_file3 = InterMediaFile(operator_id=operator_id, delete_flag=0, customer_apply_id=apply_code, type=3, path=settings.INTERMEDIA_AGREEMENT_3, is_skip=0)
+        logger.info(media_file3)
+        media_file4 = InterMediaFile(operator_id=operator_id, delete_flag=0, customer_apply_id=apply_code, type=4, is_skip=0)
+        logger.info(media_file4)
+        return media_file2, media_file3, media_file4
+
+    @staticmethod
+    def customer_intermediary_agreement_result(apply_code, operator_id=0):
+        media_file_result = InterMediaFileResullt(customer_apply_id=apply_code, delete_flag=0, result=1, operator_id=operator_id, organ_user_id=operator_id)
+        logger.info(media_file_result)
+        return media_file_result
+
+    @staticmethod
+    def customer_phcheck_result_house(apply_code, operator=0):
+        house_result = PhoneCheckResullt(customer_apply_id=apply_code, delete_flag=0, result=1, operator_id=operator, organ_user_id=operator)
+        logger.info(house_result)
+        return house_result
+
+    @staticmethod
+    def customer_phcheck_result_policy(apply_code, operator=0):
+        policy_result = PhoneCheckResullt(customer_apply_id=apply_code, delete_flag=0, self_result='通过', contact_result='通过', operator_id=operator, organ_user_id=operator)
+        logger.info(policy_result)
+        return policy_result

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import sessionmaker
-import logging, random, sys
+import logging, random, sys, os, time
 from datetime import datetime
 
 import settings
@@ -8,7 +8,7 @@ from connectors import Connector
 from models import SerialNumber
 from data import DataPreparation
 from workflow import WorkflowTrigger
-from models import CustomerInfoToRole, Role, CustomerInfoToOrgan, Organ
+from models import CustomerInfo, CustomerInfoToRole, Role, CustomerInfoToOrgan, Organ
 
 
 logging.config.dictConfig(settings.LOGGINGS)
@@ -36,42 +36,250 @@ def data_preparation(jzdbtest_session, apply_prefix, apply_suffix, apply_code, u
 
     if product_code == '1007':
         policy = DataPreparation.customer_policy(apply_code)
-        jzdbtest_session.add(policy)
-        jzdbtest_session.commit()
-        jzdbtest_session.add(DataPreparation.customer_policy_photo(apply_code, policy.id))
+        with jzdbtest_session.begin():
+            jzdbtest_session.add(policy)
+            jzdbtest_session.add(DataPreparation.customer_policy_photo(apply_code, policy.id))
+            # jzdbtest_session.commit()
 
-    jzdbtest_session.add_all([apply_sn, reg_sn, cr, apply, id_card, check_file_1, check_file_2, check_file_3, basic_info])
-    jzdbtest_session.commit()
+    with jzdbtest_session.begin():
+        jzdbtest_session.add_all([apply_sn, reg_sn, cr, apply, id_card, check_file_1, check_file_2, check_file_3, basic_info])
+        # jzdbtest_session.commit()
+
+    pboc1, pboc2 = DataPreparation.api_pboc(apply_code, jzdbtest_session)
+    file_result = DataPreparation.customer_check_file_result(apply_code)
+
+    apply_confirm_result = DataPreparation.customer_applyconfirm_result(apply_code)
+    application_info = DataPreparation.customer_application_info(apply_code)
+
+    agreement2, agreement3, agreement4 = DataPreparation.customer_intermediary_agreement_file(apply_code)
+
+    with jzdbtest_session.begin():
+        jzdbtest_session.add_all([pboc1, pboc2, file_result, apply_confirm_result, application_info, agreement2, agreement3, agreement4])
+        # jzdbtest_session.commit()
+
+    media_file_result = DataPreparation.customer_intermediary_agreement_result(apply_code)
+
+    with jzdbtest_session.begin():
+        jzdbtest_session.add(media_file_result)
+        # jzdbtest_session.commit()
+
+    return product_code
 
 
-def create_user_ids(sso_session):
-    user_id = sso_session.query(CustomerInfoToRole).join(Role, CustomerInfoToRole.role_id == Role.id).filter(Role.role_name == '渠道管理').first().customer_info_id
-    organ_id = sso_session.query(CustomerInfoToOrgan).join(Organ, CustomerInfoToOrgan.organ_id == Organ.id).filter(Organ.grade == 1).filter(CustomerInfoToOrgan.customer_info_id == user_id).first().id
-    net_id = sso_session.query(CustomerInfoToOrgan).join(Organ, CustomerInfoToOrgan.organ_id == Organ.id).filter(Organ.grade == 3).filter(CustomerInfoToOrgan.customer_info_id == user_id).first().id
+def telephone_verification_preparation(product, apply_code, jzdbtest_session):
+    if product == '1007':
+        result = DataPreparation.customer_phcheck_result_policy(apply_code)
+        with jzdbtest_session.begin():
+            jzdbtest_session.add(result)
+            # jzdbtest_session.commit()
+    else:
+        result = DataPreparation.customer_phcheck_result_house(apply_code)
+        with jzdbtest_session.begin():
+            jzdbtest_session.add(result)
+            # jzdbtest_session.commit()
+
+
+
+def create_user_ids(sso_session, role):
+    # user_id = sso_session.query(CustomerInfoToRole).join(Role, CustomerInfoToRole.role_id == Role.id).filter(Role.role_name == role).first().customer_info_id
+    # organ_id = sso_session.query(CustomerInfoToOrgan).join(Organ, CustomerInfoToOrgan.organ_id == Organ.id).filter(Organ.grade == 1).filter(CustomerInfoToOrgan.customer_info_id == user_id).first().id
+    # net_id = sso_session.query(CustomerInfoToOrgan).join(Organ, CustomerInfoToOrgan.organ_id == Organ.id).filter(Organ.grade == 3).filter(CustomerInfoToOrgan.customer_info_id == user_id).first().id
+    user_id = 142
+    organ_id = 105
+    net_id = 127
     return user_id, organ_id, net_id
 
 
 def get_session(database):
     connector = Connector(settings.CONNECTION[database]['theme'], settings.CONNECTION[database]['host'], settings.CONNECTION[database]['port'],
                           settings.CONNECTION[database]['user'], settings.CONNECTION[database]['password'], settings.CONNECTION[database]['database'])
-    Session = sessionmaker(bind=connector.get_engine())
+    Session = sessionmaker(bind=connector.get_engine(), autocommit=True)
     return Session()
 
 
+def get_auditor(sso_session, role):
+    return sso_session.query(CustomerInfo).join(CustomerInfoToRole, CustomerInfoToRole.customer_info_id == CustomerInfo.id).join(Role, CustomerInfoToRole.role_id == Role.id).filter(Role.role_name == role).first().username
+
+
+def branch_workflow(workflow):
+    workflow.create_instance()
+    workflow.id_upload_complete()
+    workflow.credential_authentication_complete()
+    workflow.basic_info_complete()
+
+
+def file_audit_workflow(workflow, auditor):
+    apply_code = None
+    has_task = True
+    while has_task:
+        response = workflow.basic_info_audit(auditor)
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('code') == 'success':
+                if apply_code == result.get('data').get('applyId'):
+                    break
+                if result.get('data').get('code') == 'success':
+                    apply_code = result.get('data').get('applyId')
+                    workflow.basic_info_audit_complete(auditor, result.get('data').get('applyId'), result.get('data').get('taskId'))
+                else:
+                    has_task = False
+            else:
+                has_task = False
+        else:
+            has_task = False
+    counter = 0
+    while counter < 12:
+        response = workflow.machine_audit_1()
+        counter += 1
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('code') == 'success':
+                if result.get('data').get('nextUrl') == 'account/toSearchResult':
+                    break
+                else:
+                    time.sleep(10)
+
+
+def solution_confirm_workflow(workflow):
+    response = workflow.solution_verification()
+    if response.status_code == 200:
+        result = response.json()
+        if result.get('code') == 'success':
+            workflow.solution_verification_complete()
+            workflow.complete_apply()
+            workflow.upload_agreements()
+
+
+def intermedia_file_audit(workflow, auditor):
+    apply_code = None
+    has_task = True
+    while has_task:
+        response = workflow.intermedia_file_audit(auditor)
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('code') == 'success':
+                if apply_code == result.get('data').get('applyId'):
+                    break
+                if result.get('data').get('code') == 'success':
+                    apply_code = result.get('data').get('applyId')
+                    workflow.intermedia_file_audit_complete(auditor, result.get('data').get('applyId'), result.get('data').get('taskId'))
+                else:
+                    has_task = False
+            else:
+                has_task = False
+        else:
+            has_task = False
+
+
+def launch_workflow(workflow, file_auditor, agreement_auditor, node):
+    branch_workflow(workflow)
+    if node == 'interview':
+        file_audit_workflow(workflow, file_auditor)
+        solution_confirm_workflow(workflow)
+        intermedia_file_audit(workflow, agreement_auditor)
+
+
+def housing_loan_phone_verification(workflow):
+    apply_code = None
+    has_task = True
+    while has_task:
+        response = workflow.housing_loan_phone_verification()
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('code') == 'success':
+                if apply_code == result.get('data').get('applyId'):
+                    break
+                if result.get('data').get('code') == 'success':
+                    apply_code = result.get('data').get('applyId')
+                    workflow.housing_loan_phone_verification_complete(result.get('data').get('applyId'), result.get('data').get('taskId'))
+                else:
+                    has_task = False
+            else:
+                has_task = False
+        else:
+            has_task = False
+
+
+def policy_phone_verification(workflow):
+    apply_code = None
+    has_task = True
+    while has_task:
+        response = workflow.self_phone_verification()
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('code') == 'success':
+                if apply_code == result.get('data').get('applyId'):
+                    break
+                if result.get('data').get('code') == 'success':
+                    apply_code = result.get('data').get('applyId')
+                    workflow.self_phone_verification_complete(result.get('data').get('applyId'), result.get('data').get('taskId'))
+                else:
+                    has_task = False
+            else:
+                has_task = False
+        else:
+            has_task = False
+    apply_code = None
+    has_task = True
+    while has_task:
+        response = workflow.contact_phone_verification()
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('code') == 'success':
+                if apply_code == result.get('data').get('applyId'):
+                    break
+                if result.get('data').get('code') == 'success':
+                    apply_code = result.get('data').get('applyId')
+                    workflow.contact_phone_verification_complete(result.get('data').get('applyId'), result.get('data').get('taskId'))
+                else:
+                    has_task = False
+            else:
+                has_task = False
+        else:
+            has_task = False
+
+
+def launch_phone_verification_workflow(workflow, product_code):
+        if product_code == '1007':
+            policy_phone_verification(workflow)
+        else:
+            housing_loan_phone_verification(workflow)
+
+
 if __name__ == '__main__':
-    count = int(sys.argv[1]) if len(sys.argv) > 1 else 10
-    logger.info('To import {} records.'.format(str(count)))
-    sso_session = get_session('sso')
-    user_id, organ_id, net_id = create_user_ids(sso_session)
-    for i in range(count):
-        logger.info('To create data #{}'.format(str(i + 1)))
+    print(sys.argv)
+    cmd = 'workflow'
+    if len(sys.argv) > 1:
+        cmd = sys.argv[1]
+    record_size = '3'
+    if len(sys.argv) > 2:
+        record_size = sys.argv[2]
+    xarg = 'branch'
+    if len(sys.argv) > 3:
+        xarg = sys.argv[3]
+    if cmd == 'workflow':
+        logger.info('To import {} records.'.format(record_size))
+        sso_session = get_session('sso')
+        user_id, organ_id, net_id = create_user_ids(sso_session, '渠道管理')
+        file_auditor = get_auditor(sso_session, '资料审核')
+        agreement_auditor = get_auditor(sso_session, '居间协议审核')
         jzdbtest_session = get_session('jzdbtest')
-        apply_prefix, apply_suffix, apply_code = DataPreparation.create_serial_number('AP', jzdbtest_session)
-        data_preparation(jzdbtest_session, apply_prefix, apply_suffix, apply_code, user_id, organ_id, net_id)
-        logger.info('To create workflow #{}'.format(str(i + 1)))
-        workflow = WorkflowTrigger(apply_code, user_id=user_id)
-        workflow.create_instance()
-        workflow.id_upload_complete()
-        workflow.credential_authentication_complete()
-        workflow.basic_info_complete()
-    print('{} data have been imported.'.format(str(count)))
+        for i in range(int(record_size)):
+            logger.info('To create data #{}'.format(str(i + 1)))
+            apply_prefix, apply_suffix, apply_code = DataPreparation.create_serial_number('AP', jzdbtest_session)
+            product_code = data_preparation(jzdbtest_session, apply_prefix, apply_suffix, apply_code, user_id, organ_id, net_id)
+            telephone_verification_preparation(product_code, apply_code, jzdbtest_session)
+            logger.info('To create workflow #{}'.format(str(i + 1)))
+            workflow = WorkflowTrigger(apply_code, user_id=user_id)
+            launch_workflow(workflow, file_auditor, agreement_auditor, xarg)
+            if xarg == 'interview':
+                launch_phone_verification_workflow(workflow, product_code)
+        print('{} data have been imported.'.format(str(record_size)))
+        sso_session.close()
+        jzdbtest_session.close()
+    else:
+        with open(xarg + '.csv', 'w') as csv:
+            for _ in range(int(record_size)):
+                customer = Generator.generate_customer()
+                csv.write(str(customer) + '\n')
+
