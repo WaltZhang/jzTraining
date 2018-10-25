@@ -230,3 +230,27 @@ class WorkflowTrigger:
         response = requests.post(self.workflow_url + 'phoneVerification/completeTask', data=data)
         logger.info(response.json())
         return response
+
+    # 门店登记
+    def customer_branchbook(self, customer_name, customer_id_number):
+        data = {
+            'applyId': self.apply_code,
+            'customerName': customer_name,
+            'customerIdCardNumber': customer_id_number,
+        }
+        logger.info('门店登记: ' + str(data))
+        response = requests.post(self.workflow_url + 'tool/applyPoint', data=data)
+        logger.info(response.json())
+        return response
+
+    # 门店登记完成
+    def customer_branchbook_complete(self, user_id, task_id):
+        data = {
+            'userId': user_id,
+            'applyId': self.apply_code,
+            'taskId': task_id,
+        }
+        logger.info('门店登记完成: ' + str(data))
+        response = requests.post(self.workflow_url + 'fixed/completeTask', data=data)
+        logger.info(response.json())
+        return response

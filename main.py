@@ -1,5 +1,5 @@
 from sqlalchemy.orm import sessionmaker
-import logging, random, sys, os, time
+import logging, random, sys, os, time, argparse
 from datetime import datetime
 
 import settings
@@ -8,7 +8,7 @@ from connectors import Connector
 from models import SerialNumber
 from data import DataPreparation
 from workflow import WorkflowTrigger
-from models import CustomerInfo, CustomerInfoToRole, Role, CustomerInfoToOrgan, Organ
+from models import CustomerInfo, CustomerInfoToRole, Role
 
 
 logging.config.dictConfig(settings.LOGGINGS)
@@ -63,7 +63,7 @@ def data_preparation(jzdbtest_session, apply_prefix, apply_suffix, apply_code, u
         jzdbtest_session.add(media_file_result)
         # jzdbtest_session.commit()
 
-    return product_code
+    return product_code, customer
 
 
 def telephone_verification_preparation(product, apply_code, jzdbtest_session):
@@ -128,7 +128,7 @@ def file_audit_workflow(workflow, auditor):
         else:
             has_task = False
     counter = 0
-    while counter < 12:
+    while counter < 31:
         response = workflow.machine_audit_1()
         counter += 1
         if response.status_code == 200:
@@ -169,14 +169,6 @@ def intermedia_file_audit(workflow, auditor):
                 has_task = False
         else:
             has_task = False
-
-
-def launch_workflow(workflow, file_auditor, agreement_auditor, node):
-    branch_workflow(workflow)
-    if node == 'interview':
-        file_audit_workflow(workflow, file_auditor)
-        solution_confirm_workflow(workflow)
-        intermedia_file_audit(workflow, agreement_auditor)
 
 
 def housing_loan_phone_verification(workflow):
@@ -246,17 +238,28 @@ def launch_phone_verification_workflow(workflow, product_code):
             housing_loan_phone_verification(workflow)
 
 
+def launch_branch_registration_workflow(workflow, customer_name, customer_id_number):
+    response = workflow.customer_branchbook(customer_name, customer_id_number)
+    if response.status_code == 200:
+        result = response.json()
+        if result.get('code') == 'success':
+            workflow.customer_branchbook_complete('108', result.get('data').get('taskId'))
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='JunZheng training simulator CLI tool.')
+    parser.add_argument('count', metavar='N', type=int, nargs='?', default='3', help='the record count of simulating data')
+    parser.add_argument('-c', default='workflow', help="training tool's commands", choices=['workflow', 'export'])
+    parser.add_argument('-x', nargs='?', default='interview', help='exported file name if -c assigned with export, other wise flow node', choices=['interview', 'branch'])
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    print(sys.argv)
-    cmd = 'workflow'
-    if len(sys.argv) > 1:
-        cmd = sys.argv[1]
-    record_size = '3'
-    if len(sys.argv) > 2:
-        record_size = sys.argv[2]
-    xarg = 'branch'
-    if len(sys.argv) > 3:
-        xarg = sys.argv[3]
+    args = vars(parse_args())
+    cmd = args['c']
+    record_size = args['count']
+    xarg = args['x']
+
     if cmd == 'workflow':
         logger.info('To import {} records.'.format(record_size))
         sso_session = get_session('sso')
@@ -267,13 +270,17 @@ if __name__ == '__main__':
         for i in range(int(record_size)):
             logger.info('To create data #{}'.format(str(i + 1)))
             apply_prefix, apply_suffix, apply_code = DataPreparation.create_serial_number('AP', jzdbtest_session)
-            product_code = data_preparation(jzdbtest_session, apply_prefix, apply_suffix, apply_code, user_id, organ_id, net_id)
+            product_code, customer = data_preparation(jzdbtest_session, apply_prefix, apply_suffix, apply_code, user_id, organ_id, net_id)
             telephone_verification_preparation(product_code, apply_code, jzdbtest_session)
             logger.info('To create workflow #{}'.format(str(i + 1)))
             workflow = WorkflowTrigger(apply_code, user_id=user_id)
-            launch_workflow(workflow, file_auditor, agreement_auditor, xarg)
+            branch_workflow(workflow)
             if xarg == 'interview':
+                file_audit_workflow(workflow, file_auditor)
+                solution_confirm_workflow(workflow)
+                intermedia_file_audit(workflow, agreement_auditor)
                 launch_phone_verification_workflow(workflow, product_code)
+                launch_branch_registration_workflow(workflow, customer.name, customer.id_number)
         print('{} data have been imported.'.format(str(record_size)))
         sso_session.close()
         jzdbtest_session.close()
