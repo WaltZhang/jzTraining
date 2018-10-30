@@ -16,74 +16,79 @@ logger = logging.getLogger('')
 
 
 def data_preparation(jzdbtest_session, apply_prefix, apply_suffix, apply_code, user_id, organ_id, net_id):
+    # Create apply id and register the id
     apply_sn = SerialNumber(insert_time=datetime.now(), update_time=datetime.now(), operator_id=0, delete_flag=0, type=2, prefix=apply_prefix, suffix=apply_suffix, number=apply_code)
-
     register_prefix, register_suffix, register_code = DataPreparation.create_serial_number('RE', jzdbtest_session)
     reg_sn = SerialNumber(insert_time=datetime.now(), update_time=datetime.now(), operator_id=0, delete_flag=0, type=1, prefix=register_prefix, suffix=register_suffix, number=register_code)
 
+    # Create apply
     product_code = ['1006', '1007'][random.randint(0, 1)]
     customer = Generator.generate_customer()
     cr = DataPreparation.customer_register(register_code, customer, product_code, user_id, organ_id, net_id)
     apply = DataPreparation.customer_apply(apply_code, register_code, customer, product_code, user_id, organ_id, net_id)
 
+    # Create user id information
     id_card = DataPreparation.customer_id_card(apply_code, customer)
 
+    # Check files
     check_file_1 = DataPreparation.customer_check_file(apply_code, 1)
     check_file_2 = DataPreparation.customer_check_file(apply_code, 2)
     check_file_3 = DataPreparation.customer_check_file(apply_code, 3)
 
+    # Customer basic information
     basic_info = DataPreparation.customer_application_info_pre(apply_code, customer)
 
+    # Customer policy information, if product id is 1007
     if product_code == '1007':
         policy = DataPreparation.customer_policy(apply_code)
         with jzdbtest_session.begin():
             jzdbtest_session.add(policy)
             jzdbtest_session.add(DataPreparation.customer_policy_photo(apply_code, policy.id))
-            # jzdbtest_session.commit()
 
     with jzdbtest_session.begin():
         jzdbtest_session.add_all([apply_sn, reg_sn, cr, apply, id_card, check_file_1, check_file_2, check_file_3, basic_info])
-        # jzdbtest_session.commit()
 
+    # Create credits
     pboc1, pboc2 = DataPreparation.api_pboc(apply_code, jzdbtest_session)
     file_result = DataPreparation.customer_check_file_result(apply_code)
 
+    # Customer information review
     apply_confirm_result = DataPreparation.customer_applyconfirm_result(apply_code)
+
+    # Entire customer information
     application_info = DataPreparation.customer_application_info(apply_code)
 
+    # Intermedia agreements
     agreement2, agreement3, agreement4 = DataPreparation.customer_intermediary_agreement_file(apply_code)
 
     with jzdbtest_session.begin():
         jzdbtest_session.add_all([pboc1, pboc2, file_result, apply_confirm_result, application_info, agreement2, agreement3, agreement4])
-        # jzdbtest_session.commit()
 
+    # Intermedia agreements review
     media_file_result = DataPreparation.customer_intermediary_agreement_result(apply_code)
 
     with jzdbtest_session.begin():
         jzdbtest_session.add(media_file_result)
-        # jzdbtest_session.commit()
 
     return product_code, customer
 
 
 def telephone_verification_preparation(product, apply_code, jzdbtest_session):
+    # Telephone verification
     if product == '1007':
         result = DataPreparation.customer_phcheck_result_policy(apply_code)
         with jzdbtest_session.begin():
             jzdbtest_session.add(result)
-            # jzdbtest_session.commit()
     else:
         result = DataPreparation.customer_phcheck_result_house(apply_code)
         with jzdbtest_session.begin():
             jzdbtest_session.add(result)
-            # jzdbtest_session.commit()
 
 
 
 def create_user_ids(sso_session, role):
-    # user_id = sso_session.query(CustomerInfoToRole).join(Role, CustomerInfoToRole.role_id == Role.id).filter(Role.role_name == role).first().customer_info_id
-    # organ_id = sso_session.query(CustomerInfoToOrgan).join(Organ, CustomerInfoToOrgan.organ_id == Organ.id).filter(Organ.grade == 1).filter(CustomerInfoToOrgan.customer_info_id == user_id).first().id
-    # net_id = sso_session.query(CustomerInfoToOrgan).join(Organ, CustomerInfoToOrgan.organ_id == Organ.id).filter(Organ.grade == 3).filter(CustomerInfoToOrgan.customer_info_id == user_id).first().id
+    # Since only the applies from '君正AA' branch can go to interview site '君正BB',
+    # the user should be in '君正AA' branch
     user_id = 142
     organ_id = 105
     net_id = 127
@@ -98,10 +103,12 @@ def get_session(database):
 
 
 def get_auditor(sso_session, role):
+    # Query customer information auditor
     return sso_session.query(CustomerInfo).join(CustomerInfoToRole, CustomerInfoToRole.customer_info_id == CustomerInfo.id).join(Role, CustomerInfoToRole.role_id == Role.id).filter(Role.role_name == role).first().username
 
 
 def branch_workflow(workflow):
+    # Workflow for the applies from branches
     workflow.create_instance()
     workflow.id_upload_complete()
     workflow.credential_authentication_complete()
@@ -109,6 +116,7 @@ def branch_workflow(workflow):
 
 
 def file_audit_workflow(workflow, auditor):
+    # basic file audit
     apply_code = None
     has_task = True
     while has_task:
@@ -127,6 +135,7 @@ def file_audit_workflow(workflow, auditor):
                 has_task = False
         else:
             has_task = False
+    # machine audit
     counter = 0
     while counter < 31:
         response = workflow.machine_audit_1()
@@ -141,6 +150,7 @@ def file_audit_workflow(workflow, auditor):
 
 
 def solution_confirm_workflow(workflow):
+    # solution confirm
     response = workflow.solution_verification()
     if response.status_code == 200:
         result = response.json()
@@ -151,6 +161,7 @@ def solution_confirm_workflow(workflow):
 
 
 def intermedia_file_audit(workflow, auditor):
+    # intermedia file audit
     apply_code = None
     has_task = True
     while has_task:
@@ -172,6 +183,7 @@ def intermedia_file_audit(workflow, auditor):
 
 
 def housing_loan_phone_verification(workflow):
+    # housing loan's phone verfication
     apply_code = None
     has_task = True
     while has_task:
@@ -193,6 +205,7 @@ def housing_loan_phone_verification(workflow):
 
 
 def policy_phone_verification(workflow):
+    # policy's phone verification
     apply_code = None
     has_task = True
     while has_task:
@@ -232,13 +245,15 @@ def policy_phone_verification(workflow):
 
 
 def launch_phone_verification_workflow(workflow, product_code):
-        if product_code == '1007':
-            policy_phone_verification(workflow)
-        else:
-            housing_loan_phone_verification(workflow)
+    # launch phone verification
+    if product_code == '1007':
+        policy_phone_verification(workflow)
+    else:
+        housing_loan_phone_verification(workflow)
 
 
 def launch_branch_registration_workflow(workflow, customer_name, customer_id_number):
+    # branch registration
     response = workflow.customer_branchbook(customer_name, customer_id_number)
     if response.status_code == 200:
         result = response.json()
@@ -261,6 +276,7 @@ if __name__ == '__main__':
     xarg = args['x']
 
     if cmd == 'workflow':
+        # workflow
         logger.info('To import {} records.'.format(record_size))
         sso_session = get_session('sso')
         user_id, organ_id, net_id = create_user_ids(sso_session, '渠道管理')
@@ -285,6 +301,7 @@ if __name__ == '__main__':
         sso_session.close()
         jzdbtest_session.close()
     else:
+        # for export simulated data
         with open(xarg + '.csv', 'w') as csv:
             for _ in range(int(record_size)):
                 customer = Generator.generate_customer()
